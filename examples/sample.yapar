@@ -1,0 +1,29 @@
+%token INT FLOAT ID PLUS MINUS TIMES DIVIDE LPAREN RPAREN EQUALS
+
+%%
+
+programa : lista_sentencias
+         ;
+
+lista_sentencias : sentencia
+                 | lista_sentencias sentencia
+                 ;
+
+sentencia : ID EQUALS expresion
+          ;
+
+expresion : expresion PLUS termino
+          | expresion MINUS termino
+          | termino
+          ;
+
+termino : termino TIMES factor
+        | termino DIVIDE factor
+        | factor
+        ;
+
+factor : INT
+       | FLOAT
+       | ID
+       | LPAREN expresion RPAREN
+       ;
