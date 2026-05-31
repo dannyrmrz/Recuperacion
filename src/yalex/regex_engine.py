@@ -490,3 +490,234 @@ def regex_to_nfa(regex, token_name=None):
         nfa.accept.token_name = token_name
     
     return nfa
+
+# AFN a AFD
+class DFAState:
+    """
+    Representa un estado del AFD.
+    
+    Cada estado del AFD corresponde a un CONJUNTO de estados del AFN.
+    Por ejemplo, el estado AFD que representa {nfa_state_0, nfa_state_2}
+    significa "el AFN podría estar en el estado 0 o en el estado 2".
+    
+    Atributos:
+    - id: número único
+    - nfa_states: el conjunto de estados AFN que representa
+    - transitions: {símbolo: dfa_state_destino}  (determinista: solo 1 destino)
+    - is_accept: True si algún estado AFN del conjunto es de aceptación
+    - token_name: el token que produce (del primer estado de aceptación encontrado)
+    """
+    
+    _counter = 0
+    
+    def __init__(self, nfa_states):
+        self.id = DFAState._counter
+        DFAState._counter += 1
+        # Guardamos como frozenset para poder usarlo como clave de diccionario
+        self.nfa_states = frozenset(s.id for s in nfa_states)
+        self.transitions = {}    # {símbolo: DFAState}
+        self.is_accept = False
+        self.token_name = None
+    
+    def __repr__(self):
+        return f"DFAState({self.id}, nfa={set(self.nfa_states)}, accept={self.is_accept})"
+
+
+class DFA:
+    """
+    Representa un AFD completo.
+    
+    Atributos:
+    - start: estado inicial
+    - states: lista de todos los estados
+    - accept_states: lista de estados de aceptación
+    """
+    
+    def __init__(self, start, states, accept_states):
+        self.start = start
+        self.states = states
+        self.accept_states = accept_states
+
+
+def epsilon_closure(states):
+    """
+    Calcula la ε-clausura de un conjunto de estados AFN.
+    
+    La ε-clausura es el conjunto de todos los estados alcanzables
+    usando SOLO transiciones ε (sin consumir ningún carácter).
+    
+    Usamos BFS para explorar todas las transiciones ε.
+    
+    Ejemplo:
+        Si Estado_0 --ε--> Estado_1 --ε--> Estado_2
+        epsilon_closure([Estado_0]) = {Estado_0, Estado_1, Estado_2}
+    """
+    # El resultado siempre incluye los estados originales
+    closure = set(states)
+    # Pila de estados a explorar
+    stack = list(states)
+    
+    while stack:
+        state = stack.pop()
+        # Ver todas las transiciones ε de este estado
+        for next_state in state.transitions.get('ε', []):
+            if next_state not in closure:
+                closure.add(next_state)
+                stack.append(next_state)
+    
+    return closure
+
+
+def move(states, symbol):
+    """
+    Calcula el conjunto de estados alcanzables desde 'states'
+    consumiendo el símbolo 'symbol'.
+    
+    Recorre todos los estados del conjunto y recolecta
+    todos los destinos de transiciones con ese símbolo.
+    
+    Ejemplo:
+        Estados {0, 1}, símbolo 'a':
+        Estado_0 --a--> Estado_3
+        Estado_1 --a--> Estado_4
+        move({0,1}, 'a') = {Estado_3, Estado_4}
+    """
+    result = set()
+    for state in states:
+        for next_state in state.transitions.get(symbol, []):
+            result.add(next_state)
+    return result
+
+
+def get_alphabet(nfa):
+    """
+    Obtiene todos los símbolos usados en el AFN,
+    excluyendo ε (que no es un símbolo real del alfabeto).
+    """
+    alphabet = set()
+    # Recorrer todos los estados y recolectar símbolos
+    all_states = _collect_states(nfa.start)
+    for state in all_states:
+        for symbol in state.transitions:
+            if symbol != 'ε':
+                alphabet.add(symbol)
+    return alphabet
+
+
+def nfa_to_dfa(nfa):
+    """
+    Convierte un AFN a un AFD usando el algoritmo de construcción de subconjuntos.
+    
+    Pasos:
+    1. El estado inicial del AFD = ε-clausura del estado inicial del AFN
+    2. Para cada estado AFD no procesado:
+       Para cada símbolo del alfabeto:
+         - Calcular mover(estado_actual, símbolo)
+         - Calcular ε-clausura del resultado
+         - Si ese conjunto no existe como estado AFD, crearlo
+         - Agregar la transición
+    3. Marcar estados de aceptación
+    """
+    # Obtener el alfabeto del AFN (todos los símbolos excepto ε)
+    alphabet = get_alphabet(nfa)
+    
+    # Paso 1: estado inicial del AFD
+    initial_closure = epsilon_closure([nfa.start])
+    start_dfa = DFAState(initial_closure)
+    
+    # Diccionario: frozenset de IDs de estados AFN → DFAState
+    # Para no crear estados duplicados
+    dfa_states_map = {start_dfa.nfa_states: start_dfa}
+    
+    # Lista de todos los estados del AFD
+    all_dfa_states = [start_dfa]
+    
+    # Cola de estados por procesar
+    unprocessed = [start_dfa]
+    
+    # Paso 2: procesar cada estado del AFD
+    while unprocessed:
+        current_dfa = unprocessed.pop(0)
+        
+        # Obtener los objetos State del AFN que corresponden a este estado AFD
+        # (necesitamos los objetos, no solo los IDs)
+        current_nfa_states = _get_nfa_state_objects(nfa, current_dfa.nfa_states)
+        
+        for symbol in alphabet:
+            # Calcular mover(estados_actuales, símbolo)
+            moved = move(current_nfa_states, symbol)
+            
+            if not moved:
+                # No hay transición con este símbolo → ignorar
+                continue
+            
+            # Calcular ε-clausura del resultado
+            closure = epsilon_closure(moved)
+            closure_ids = frozenset(s.id for s in closure)
+            
+            # Ya existe este conjunto como estado AFD
+            if closure_ids not in dfa_states_map:
+                # Crear nuevo estado AFD
+                new_dfa = DFAState(closure)
+                dfa_states_map[closure_ids] = new_dfa
+                all_dfa_states.append(new_dfa)
+                unprocessed.append(new_dfa)
+            
+            # Agregar la transición al estado AFD actual
+            current_dfa.transitions[symbol] = dfa_states_map[closure_ids]
+    
+    # Paso 3: marcar estados de aceptación
+    # Un estado AFD es de aceptación si contiene algún estado de aceptación del AFN
+    accept_states = []
+    all_nfa_states = _collect_states(nfa.start)
+    
+    for dfa_state in all_dfa_states:
+        for nfa_state in all_nfa_states:
+            if nfa_state.id in dfa_state.nfa_states and nfa_state.is_accept:
+                dfa_state.is_accept = True
+                dfa_state.token_name = nfa_state.token_name
+                accept_states.append(dfa_state)
+                break  # un estado AFD solo necesita un token (el primero que encuentre)
+    
+    return DFA(start_dfa, all_dfa_states, accept_states)
+
+
+def _get_nfa_state_objects(nfa, state_ids):
+    """
+    Dado un conjunto de IDs de estados AFN, retorna los objetos State correspondientes.
+    
+    Necesitamos esto porque DFAState guarda IDs (no objetos) para poder usarlos como claves de diccionario.
+    """
+    all_states = _collect_states(nfa.start)
+    return [s for s in all_states if s.id in state_ids]
+
+
+def simulate_dfa(dfa, input_string):
+    """
+    Simula el AFD sobre una cadena de entrada.
+    
+    Recorre la cadena carácter por carácter, siguiendo transiciones.
+    
+    Retorna:
+    - (True, token_name) si la cadena es aceptada
+    - (False, None) si la cadena es rechazada
+    
+    Ejemplo:
+        dfa acepta dígitos, input = "123"
+        → sigue transiciones para '1', '2', '3'
+        → llega a estado de aceptación
+        → retorna (True, 'INT')
+    """
+    current_state = dfa.start
+    
+    for char in input_string:
+        if char in current_state.transitions:
+            current_state = current_state.transitions[char]
+        else:
+            # No hay transición → cadena rechazada
+            return False, None
+    
+    if current_state.is_accept:
+        return True, current_state.token_name
+    else:
+        return False, None
