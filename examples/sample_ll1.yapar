@@ -1,0 +1,33 @@
+/* Gramática de expresiones sin recursión izquierda */
+/* Esta versión SÍ es compatible con LL(1)          */
+%token INT FLOAT ID PLUS MINUS TIMES DIVIDE LPAREN RPAREN EQUALS
+
+%%
+
+programa : sentencia
+         ;
+
+sentencia : ID EQUALS expresion
+          ;
+
+expresion : termino expresion_p
+          ;
+
+expresion_p : PLUS termino expresion_p
+            | MINUS termino expresion_p
+            | ε
+            ;
+
+termino : factor termino_p
+        ;
+
+termino_p : TIMES factor termino_p
+          | DIVIDE factor termino_p
+          | ε
+          ;
+
+factor : INT
+       | FLOAT
+       | ID
+       | LPAREN expresion RPAREN
+       ;
