@@ -53,24 +53,52 @@ class NFA:
         self.accept = accept  # Estado de aceptación
 
 def preprocess_regex(regex):
-    """
-    Convierte la regex del formato .yalex al formato estándar
-    
-    Hace dos cosas:
-    1. Expande clases de caracteres ['0'-'9'] → (0|1|2|...|9)
-    2. Agrega operadores de concatenación explícitos '.'
-       Ejemplo: "ab" → "a.b"  (la concatenación normalmente es implícita)
-    
-    Se agrega "." porque cuando convirtamos a postfix, necesitamos que todos los
-    operadores sean explícitos.
-    """
-    # Paso 1: expandir clases de caracteres
+    # Paso 1: PRIMERO expandir clases ['0'-'9'] → (0|1|...|9)
+    # porque adentro de los corchetes también hay comillas simples
     regex = expand_char_classes(regex)
     
-    # Paso 2: agregar concatenación explícita
+    # Paso 2: DESPUÉS convertir literales sueltos '+' → \+
+    # ya no hay corchetes que interfieran
+    regex = _handle_quoted_literals(regex)
+    
+    # Paso 3: agregar concatenación explícita
     regex = add_concat_operator(regex)
     
     return regex
+
+
+def _handle_quoted_literals(regex):
+    """
+    Convierte caracteres entre comillas simples a forma escapada.
+    
+    En el archivo .yalex, los caracteres literales van entre comillas:
+        '+' significa el carácter más, NO el operador kleene+
+        '*' significa el carácter asterisco, NO el operador kleene*
+    
+    Nosotros los convertimos a \\c (con backslash) para distinguirlos
+    de los operadores durante el procesamiento.
+    
+    Ejemplos:
+        '+' → \\+
+        'a' → \\a
+        '*' → \\*
+    """
+    result = []
+    i = 0
+    
+    while i < len(regex):
+        # ¿Encontramos una comilla simple?
+        if regex[i] == "'" and i + 2 < len(regex) and regex[i + 2] == "'":
+            char = regex[i + 1]
+            # Agregar con backslash para marcarlo como literal
+            result.append('\\')
+            result.append(char)
+            i += 3  # saltar toda la secuencia 'c'
+        else:
+            result.append(regex[i])
+            i += 1
+    
+    return ''.join(result)
 
 
 def expand_char_classes(regex):
@@ -155,149 +183,134 @@ def parse_char_class(content):
 def add_concat_operator(regex):
     """
     Agrega el operador de concatenación '·' de forma explícita.
-    
-    En regex normal, "ab" significa "a concatenado con b", pero
-    esa concatenación es implícita. Para convertir a postfix
-    necesitamos hacerla explícita con un símbolo.
-    Usamos el símbolo '·' (punto medio).
-    
-    Regla: agregar '·' entre dos caracteres cuando:
-    - El carácter de la izquierda es: letra, dígito, ')', '*', '+', '?'
-    - El carácter de la derecha es:  letra, dígito, '('
-    
-    Ejemplo:
-        "ab*c"  →  "a·b*·c"
-        "a(bc)" →  "a·(b·c)"
     """
-    result = []
-    
-    # Caracteres que pueden ir a la IZQUIERDA de una concatenación
     left_chars = set('abcdefghijklmnopqrstuvwxyz'
                      'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
                      '0123456789)*+?')
     
-    # Caracteres que pueden ir a la DERECHA de una concatenación
     right_chars = set('abcdefghijklmnopqrstuvwxyz'
                       'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                      '0123456789(')
+                      '0123456789(\\')  # ← agregar \\ aquí
     
-    for i, char in enumerate(regex):
+    result = []
+    i = 0
+    
+    while i < len(regex):
+        char = regex[i]
+        
+        # Si es un carácter escapado \c, tratarlo como UN solo operando
+        if char == '\\' and i + 1 < len(regex):
+            next_char = regex[i + 1]
+            result.append(char)
+            result.append(next_char)
+            
+            # ¿Necesitamos concatenación después del \c?
+            if i + 2 < len(regex):
+                after = regex[i + 2]
+                if after in right_chars or after == '\\':
+                    result.append('·')
+            
+            i += 2  # saltar \c completo
+            continue
+        
         result.append(char)
         
         if i + 1 < len(regex):
             next_char = regex[i + 1]
-            # Necesitamos agregar concatenación si char y next_char cumplen las condiciones
-            if char in left_chars and next_char in right_chars:
+            # No agregar · si el siguiente es parte de un escape
+            if char in left_chars and (next_char in right_chars):
                 result.append('·')
+        
+        i += 1
     
     return ''.join(result)
 
-
 def to_postfix(regex):
     """
-    Convierte una regex en notación infix a notación postfix
-    usando el algoritmo Shunting Yard de Dijkstra.
-    
-    ¿Por qué postfix?
-    En postfix, los operadores van DESPUÉS de sus operandos, sirve para después poder evaluar
-    la expresión con una pila.
-    
-    Ejemplo:
-        infix:   "a·b|c*"
-        postfix: "ab·c*|"
-    
-    Precedencia de operadores (mayor número = mayor precedencia):
-        |  →  1  (unión, menor precedencia)
-        ·  →  2  (concatenación)
-        *  →  3  (cerradura Kleene)
-        +  →  3  (cerradura positiva)
-        ?  →  3  (cero o uno, mayor precedencia)
+    Convierte regex de infix a postfix (Shunting Yard).
     """
-    # Precedencia de cada operador
     precedence = {'|': 1, '·': 2, '*': 3, '+': 3, '?': 3}
     
-    output = []   # cola de salida (resultado postfix)
-    stack = []    # pila de operadores
+    output = []
+    stack = []
+    i = 0
     
-    for char in regex:
+    while i < len(regex):
+        char = regex[i]
+        
+        # Si es un carácter escapado \c → tratarlo como operando simple
+        if char == '\\' and i + 1 < len(regex):
+            output.append(char + regex[i + 1])  # agregar '\c' como unidad
+            i += 2
+            continue
+        
         if char == '(':
-            # Paréntesis abierto: siempre va a la pila
             stack.append(char)
             
         elif char == ')':
-            # Paréntesis cerrado: sacar todo hasta encontrar '('
             while stack and stack[-1] != '(':
                 output.append(stack.pop())
             if stack:
-                stack.pop()  # sacar el '(' de la pila (sin agregar al output)
+                stack.pop()
                 
         elif char in precedence:
-            # Es un operador: sacar operadores de mayor o igual precedencia
-            while (stack and 
-                   stack[-1] != '(' and 
+            while (stack and
+                   stack[-1] != '(' and
                    stack[-1] in precedence and
                    precedence[stack[-1]] >= precedence[char]):
                 output.append(stack.pop())
             stack.append(char)
             
         else:
-            # Es un operando (carácter normal): va directo al output
             output.append(char)
+        
+        i += 1
     
-    # Sacar todos los operadores que quedaron en la pila
     while stack:
         output.append(stack.pop())
     
-    return ''.join(output)
+    return output  # ← ahora retorna LISTA en vez de string (maneja \c de 2 chars)
 
 # AFN Thompson
 def build_nfa_from_postfix(postfix):
     """
-    Construye el AFN usando el algoritmo de Thompson a partir de una expresión en notación postfix.
-    
-    Usamos una pila de AFNs.
-    - Cuando encontramos un carácter, construimos AFN básico y lo ponemos en la pila
-    - Cuando encontramos un operador,  sacamos AFNs de la pila, los combinamos, 
-    y ponemos el resultado de vuelta
+    Construye el AFN desde postfix.
+    postfix ahora es una LISTA de tokens (cada elemento puede ser \\c o un char).
     """
-    stack = []  # pila de AFNs
+    stack = []
     
-    for char in postfix:
+    for token in postfix:  # ← iteramos sobre lista, no sobre string
         
-        if char == '·':
-            # CONCATENACIÓN: sacar dos AFNs y conectarlos en serie
-            # El segundo que se saca es el de la IZQUIERDA (por LIFO - último en entrar, primero en salir)
+        if token == '·':
             nfa2 = stack.pop()
             nfa1 = stack.pop()
             stack.append(_concat(nfa1, nfa2))
             
-        elif char == '|':
-            # UNIÓN: sacar dos AFNs y crear uno nuevo que acepta cualquiera
+        elif token == '|':
             nfa2 = stack.pop()
             nfa1 = stack.pop()
             stack.append(_union(nfa1, nfa2))
             
-        elif char == '*':
-            # KLEENE: sacar un AFN y crear su cerradura (0 o más)
+        elif token == '*':
             nfa = stack.pop()
             stack.append(_kleene(nfa))
             
-        elif char == '+':
-            # CERRADURA POSITIVA: 1 o más = concatenar con Kleene
-            # r+ es equivalente a r·r*
+        elif token == '+':
             nfa = stack.pop()
-            # Necesitamos dos copias del AFN
             nfa_copy = stack_copy_nfa(nfa)
             stack.append(_concat(nfa, _kleene(nfa_copy)))
             
-        elif char == '?':
-            # CERO O UNO: r? es equivalente a r|ε
+        elif token == '?':
             nfa = stack.pop()
             stack.append(_optional(nfa))
             
         else:
-            # CARÁCTER SIMPLE: construir AFN básico
-            stack.append(_single_char(char))
+            # Carácter literal — si es \c, extraer solo c
+            if token.startswith('\\') and len(token) == 2:
+                actual_char = token[1]  # el carácter real sin el backslash
+            else:
+                actual_char = token
+            stack.append(_single_char(actual_char))
     
     if not stack:
         raise ValueError("La expresión regular está vacía o es inválida")
