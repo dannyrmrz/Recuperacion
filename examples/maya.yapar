@@ -1,0 +1,65 @@
+/* Gramática del Maya Yucateco simplificado */
+/* Estructura VSO para preguntas, SVO para oraciones */
+
+%token BAAX TUUX MAAX BIX JAYTEN
+%token YAAN BIN TAAL KAAJ KIIMAX
+%token IN TEN PRON_U
+%token LE SUFIJO_O TI
+%token PAAL NAH LUUM KAAJAL JAAB JA
+%token INTERROGACION PUNTO
+
+%%
+
+consulta : pregunta INTERROGACION
+         | oracion PUNTO
+         | oracion
+         ;
+
+pregunta : pal_interrogativa sintagma_verbal
+         | pal_interrogativa sintagma_nominal sintagma_verbal
+         | pal_interrogativa sintagma_verbal sintagma_nominal
+         ;
+
+oracion : sintagma_nominal sintagma_verbal
+        | sintagma_verbal sintagma_nominal
+        ;
+
+pal_interrogativa : BAAX
+                  | TUUX
+                  | MAAX
+                  | BIX
+                  | JAYTEN
+                  ;
+
+sintagma_nominal : LE sustantivo SUFIJO_O
+                 | LE sustantivo
+                 | pronombre sustantivo
+                 | sustantivo
+                 ;
+
+sintagma_verbal : verbo
+                | verbo preposicion sintagma_nominal
+                ;
+
+preposicion : TI
+            ;
+
+pronombre : IN
+          | TEN
+          | PRON_U
+          ;
+
+sustantivo : PAAL
+           | NAH
+           | LUUM
+           | KAAJAL
+           | JAAB
+           | JA
+           ;
+
+verbo : YAAN
+      | BIN
+      | TAAL
+      | KAAJ
+      | KIIMAX
+      ;
