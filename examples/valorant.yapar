@@ -1,0 +1,62 @@
+/* ValorantScript — Gramática */
+/* Lenguaje de programación inspirado en Valorant */
+
+%token ABILITY CREDITS PLANT SPIKE DEFUSE ROUND CALLOUT GG CLUTCH WHIFF
+%token INT ID
+%token PLUS MINUS TIMES DIVIDE
+%token GT LT EQUALS
+%token LPAREN RPAREN
+
+%%
+
+programa : lista_sentencias
+         ;
+
+lista_sentencias : lista_sentencias sentencia
+                 | sentencia
+                 ;
+
+sentencia : declaracion
+          | asignacion
+          | condicional
+          | bucle
+          | imprimir
+          ;
+
+declaracion : ABILITY CREDITS ID PLANT expresion
+            ;
+
+asignacion : ID PLANT expresion
+           ;
+
+imprimir : CALLOUT expresion
+         ;
+
+condicional : SPIKE LPAREN condicion RPAREN GG lista_sentencias GG
+            | SPIKE LPAREN condicion RPAREN GG lista_sentencias DEFUSE GG lista_sentencias GG
+            ;
+
+bucle : ROUND LPAREN condicion RPAREN GG lista_sentencias GG
+      ;
+
+condicion : expresion GT expresion
+          | expresion LT expresion
+          | expresion EQUALS expresion
+          ;
+
+expresion : expresion PLUS termino
+          | expresion MINUS termino
+          | termino
+          ;
+
+termino : termino TIMES factor
+        | termino DIVIDE factor
+        | factor
+        ;
+
+factor : INT
+       | ID
+       | CLUTCH
+       | WHIFF
+       | LPAREN expresion RPAREN
+       ;
