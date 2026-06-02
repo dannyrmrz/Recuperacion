@@ -1,28 +1,27 @@
+# src/yapar/shift_reduce_parser.py
+#
 # Parser shift-reduce que usa las tablas SLR o LALR.
-# Cuando encuentra conflictos, lanza hilos paralelos para explorar cada camino posible simultáneamente.
+# Cuando encuentra conflictos, lanza hilos paralelos
+# para explorar cada camino posible simultaneamente.
 
 import threading
 
-# NODO DEL ÁRBOL SINTÁCTICO
+
+# ─────────────────────────────────────────────
+# NODO DEL ARBOL SINTACTICO
+# ─────────────────────────────────────────────
+
 class ParseTreeNode:
     """
-    Nodo del árbol sintáctico.
-
-    Cada nodo representa:
-    - Un no terminal (nodo interno): tiene hijos
-    - Un terminal/token (hoja): no tiene hijos
-
-    Ejemplo para "ID EQUALS INT":
-        sentencia
-        ├── ID
-        ├── EQUALS
-        └── INT
+    Nodo del arbol sintactico.
+    - No terminal (nodo interno): tiene hijos
+    - Terminal/token (hoja): no tiene hijos
     """
 
     def __init__(self, symbol, children=None, token_value=None):
-        self.symbol      = symbol        # nombre del símbolo
-        self.children    = children or []  # hijos (para no terminales)
-        self.token_value = token_value   # valor real del token (para hojas)
+        self.symbol      = symbol
+        self.children    = children or []
+        self.token_value = token_value
 
     def is_leaf(self):
         return len(self.children) == 0
@@ -31,7 +30,6 @@ class ParseTreeNode:
         return f"Node({self.symbol})"
 
     def to_string(self, indent=0):
-        """Representación visual del árbol con indentación."""
         prefix = "  " * indent
         if self.is_leaf():
             val = f" = '{self.token_value}'" if self.token_value else ""
@@ -42,21 +40,18 @@ class ParseTreeNode:
                 lines.append(child.to_string(indent + 1))
             return '\n'.join(lines)
 
+
+# ─────────────────────────────────────────────
 # ESTADO INTERNO DEL PARSER
+# ─────────────────────────────────────────────
+
 class ParserState:
     """
-    Representa el estado completo de un parser en un momento dado.
-
-    Esto es lo que cada hilo paralelo tiene como su propio estado:
-    - stack: pila de estados del autómata
-    - symbol_stack: pila de símbolos (para construir el árbol)
-    - pos: posición actual en la entrada
-    - steps: historial de pasos (para visualización)
-    - tree_stack: pila de nodos del árbol sintáctico
+    Estado completo de un camino de parsing.
+    Cada hilo paralelo tiene su propia copia.
     """
 
     def __init__(self, stack, symbol_stack, tree_stack, pos, steps):
-        # Copiamos todo para que cada hilo tenga su propia versión
         self.stack        = list(stack)
         self.symbol_stack = list(symbol_stack)
         self.tree_stack   = list(tree_stack)
@@ -64,49 +59,41 @@ class ParserState:
         self.steps        = list(steps)
 
     def copy(self):
-        """Crea una copia profunda del estado para un nuevo hilo."""
         return ParserState(
             self.stack,
             self.symbol_stack,
-            [n for n in self.tree_stack],
+            list(self.tree_stack),
             self.pos,
             self.steps
         )
 
+
+# ─────────────────────────────────────────────
 # PARSER SHIFT-REDUCE
+# ─────────────────────────────────────────────
+
 class ShiftReduceParser:
     """
     Parser shift-reduce con soporte para paralelismo en conflictos.
-    Puede usar tablas SLR o LALR — ambas tienen el mismo formato.
+    Funciona con tablas SLR o LALR.
 
-    Cuando encuentra un conflicto (celda con múltiples acciones), lanza un hilo por cada acción posible y espera el resultado.
+    Cuando encuentra un conflicto (celda con multiples acciones),
+    lanza un hilo por cada accion posible y espera el resultado.
     """
 
     def __init__(self, action_table, goto_table, grammar, start_symbol):
-        """
-        action_table: {estado_id: {terminal: acción o lista de acciones}}
-        goto_table:   {estado_id: {no_terminal: estado_id}}
-        grammar:      [(no_terminal, [símbolos]), ...]
-        start_symbol: símbolo inicial de la gramática
-        """
         self.action_table = action_table
         self.goto_table   = goto_table
         self.grammar      = grammar
         self.start_symbol = start_symbol
-
-        # Para guardar todos los resultados de los hilos paralelos
         self._results      = []
         self._results_lock = threading.Lock()
 
     def parse(self, tokens):
         """
         Parsea una lista de tokens.
-
-        tokens: lista de objetos Token o strings con el tipo del token
-
-        Retorna:
-        - results: lista de resultados de cada camino explorado
-          cada resultado tiene: {'accepted', 'steps', 'tree', 'path_id'}
+        Retorna lista de resultados (uno por camino explorado).
+        Cada resultado: {'accepted', 'steps', 'tree', 'path_id'}
         """
         # Convertir tokens a lista de tipos (strings)
         if tokens and hasattr(tokens[0], 'type'):
@@ -120,24 +107,31 @@ class ShiftReduceParser:
         if not input_tokens or input_tokens[-1] != '$':
             input_tokens.append('$')
 
-        # Limpiar resultados anteriores
         self._results = []
 
-        # Estado inicial del parser
+        # ─── FIX CLAVE ───────────────────────────────────────────────────
+        # El estado inicial NO siempre es 0.
+        # Despues de multiples solicitudes al servidor Flask, el contador
+        # de LR0State sigue acumulando, por lo que el estado inicial puede
+        # tener ID 24, 48, etc. en lugar de 0.
+        # Usamos min(keys) porque el estado inicial siempre se construye
+        # primero y por lo tanto tiene el ID mas pequeño de la tabla.
+        # ─────────────────────────────────────────────────────────────────
+        initial_id = min(self.action_table.keys()) if self.action_table else 0
+
         initial_state = ParserState(
-            stack        = [0],
+            stack        = [initial_id],
             symbol_stack = [],
             tree_stack   = [],
             pos          = 0,
             steps        = []
         )
 
-        # Iniciar el parsing (puede lanzar hilos si hay conflictos)
         self._parse_path(
-            state       = initial_state,
+            state        = initial_state,
             input_tokens = input_tokens,
             token_values = token_values,
-            path_id     = 1
+            path_id      = 1
         )
 
         return self._results
@@ -145,76 +139,64 @@ class ShiftReduceParser:
     def _parse_path(self, state, input_tokens, token_values, path_id):
         """
         Ejecuta un camino de parsing hasta ACCEPT, ERROR o conflicto.
-
-        Si encuentra un conflicto, lanza hilos para cada acción posible
-        y continúa en paralelo.
-
-        path_id: número del camino (1 = original, 2/3 = ramificaciones)
+        Si hay conflicto, lanza hilos paralelos.
         """
-        MAX_STEPS = 500  # límite de seguridad
+        MAX_STEPS = 500
 
         while len(state.steps) < MAX_STEPS:
             current_state = state.stack[-1]
             current_token = (input_tokens[state.pos]
                              if state.pos < len(input_tokens) else '$')
 
-            # Obtener acción de la tabla
             action = self.action_table.get(current_state, {}).get(current_token)
 
-            # Construir info del paso para visualización
             step_info = {
-                'path_id':     path_id,
-                'stack':       list(state.stack),
+                'path_id':      path_id,
+                'stack':        list(state.stack),
                 'symbol_stack': list(state.symbol_stack),
-                'input':       input_tokens[state.pos:],
-                'action':      '',
-                'conflict':    False
+                'input':        input_tokens[state.pos:],
+                'action':       '',
+                'conflict':     False
             }
 
-            # ERROR: no hay acción
+            # ERROR: no hay accion
             if action is None:
                 step_info['action'] = (
-                    f'ERROR: no hay acción para '
+                    f'ERROR: no hay accion para '
                     f'[estado {current_state}][{current_token}]'
                 )
                 state.steps.append(step_info)
                 self._save_result(False, state.steps, None, path_id)
                 return
 
-            # CONFLICTO: hay múltiples acciones
+            # CONFLICTO: multiples acciones → paralelismo
             if isinstance(action, list):
-                step_info['action']   = (
+                step_info['action'] = (
                     f'CONFLICTO en estado {current_state} con {current_token}: '
                     f'{len(action)} caminos posibles'
                 )
                 step_info['conflict'] = True
                 state.steps.append(step_info)
 
-                # Lanzar un hilo por cada acción posible
                 threads = []
                 for i, single_action in enumerate(action):
-                    # Copiar el estado para este hilo
-                    new_state = state.copy()
+                    new_state   = state.copy()
                     new_path_id = path_id * 10 + i + 1
 
                     t = threading.Thread(
                         target=self._execute_action,
-                        args=(
-                            new_state, single_action,
-                            input_tokens, token_values,
-                            new_path_id
-                        )
+                        args=(new_state, single_action,
+                              input_tokens, token_values, new_path_id)
                     )
                     threads.append(t)
                     t.start()
 
-                # Esperar a que todos los hilos terminen
                 for t in threads:
                     t.join()
 
-                return  # este camino se dividió — terminar aquí
+                return
 
-            # ACCIÓN ÚNICA 
+            # ACCION UNICA
             self._execute_action(
                 state, action,
                 input_tokens, token_values,
@@ -225,9 +207,8 @@ class ShiftReduceParser:
     def _execute_action(self, state, action,
                         input_tokens, token_values, path_id):
         """
-        Ejecuta UNA acción (shift, reduce, accept) y continúa el parsing.
-
-        Este método es el que corren los hilos paralelos.
+        Ejecuta UNA accion (shift, reduce, accept) y continua el parsing.
+        Este metodo es el que corren los hilos paralelos.
         """
         MAX_STEPS = 500
 
@@ -247,79 +228,68 @@ class ShiftReduceParser:
 
             tipo, valor = action
 
-            # ACCEPT 
+            # ── ACCEPT ───────────────────────────────────────────────────
             if tipo == 'ACCEPT':
                 step_info['action'] = 'ACCEPT'
                 state.steps.append(step_info)
-
-                # El árbol final es el tope de tree_stack
                 tree = state.tree_stack[-1] if state.tree_stack else None
                 self._save_result(True, state.steps, tree, path_id)
                 return
 
-            # SHIFT 
+            # ── SHIFT ─────────────────────────────────────────────────────
             elif tipo == 'SHIFT':
                 dest_state = valor
-                step_info['action'] = f'SHIFT → estado {dest_state}'
+                step_info['action'] = f'SHIFT estado {dest_state}'
                 state.steps.append(step_info)
 
-                # Empujar el nuevo estado a la pila
                 state.stack.append(dest_state)
                 state.symbol_stack.append(current_token)
 
-                # Crear nodo hoja para el árbol
                 token_val = token_values.get(state.pos, current_token)
                 state.tree_stack.append(
                     ParseTreeNode(current_token, token_value=token_val)
                 )
-
-                # Avanzar en la entrada
                 state.pos += 1
 
-            # REDUCE 
+            # ── REDUCE ────────────────────────────────────────────────────
             elif tipo == 'REDUCE':
-                prod_index   = valor
-                nt, symbols  = self.grammar[prod_index]
-                rule_str     = f"{nt} → {' '.join(symbols)}"
+                prod_index  = valor
+                nt, symbols = self.grammar[prod_index]
+                rule_str    = f"{nt} -> {' '.join(symbols)}"
                 step_info['action'] = f'REDUCE {rule_str}'
                 state.steps.append(step_info)
 
-                # Sacar len(symbols) elementos de la pila
                 n = len(symbols)
                 if n > 0:
-                    # Los últimos n nodos del árbol son los hijos
-                    children = state.tree_stack[-n:]
-                    state.tree_stack = state.tree_stack[:-n]
-                    state.stack      = state.stack[:-n]
+                    children           = state.tree_stack[-n:]
+                    state.tree_stack   = state.tree_stack[:-n]
+                    state.stack        = state.stack[:-n]
                     state.symbol_stack = state.symbol_stack[:-n]
                 else:
                     children = []
 
-                # Crear nodo interno para el no terminal
                 new_node = ParseTreeNode(nt, children=children)
                 state.tree_stack.append(new_node)
                 state.symbol_stack.append(nt)
 
-                # Consultar GOTO para saber al estado ir
                 top_state = state.stack[-1]
                 goto_dest = self.goto_table.get(top_state, {}).get(nt)
 
                 if goto_dest is None:
-                    step_info = {
+                    state.steps.append({
                         'path_id':      path_id,
                         'stack':        list(state.stack),
                         'symbol_stack': list(state.symbol_stack),
                         'input':        input_tokens[state.pos:],
-                        'action':       f'ERROR: GOTO[{top_state}][{nt}] vacío',
+                        'action':       f'ERROR: GOTO[{top_state}][{nt}] vacio',
                         'conflict':     False
-                    }
-                    state.steps.append(step_info)
+                    })
                     self._save_result(False, state.steps, None, path_id)
                     return
 
                 state.stack.append(goto_dest)
 
-            # Obtener siguiente acción
+            # Obtener siguiente accion
             new_state_id  = state.stack[-1]
             current_token = (input_tokens[state.pos]
                              if state.pos < len(input_tokens) else '$')
@@ -327,28 +297,26 @@ class ShiftReduceParser:
                       .get(new_state_id, {})
                       .get(current_token))
 
-            # Sin acción - error
             if action is None:
                 state.steps.append({
                     'path_id':      path_id,
                     'stack':        list(state.stack),
                     'symbol_stack': list(state.symbol_stack),
                     'input':        input_tokens[state.pos:],
-                    'action':       (f'ERROR: no hay acción para '
+                    'action':       (f'ERROR: no hay accion para '
                                      f'[estado {new_state_id}][{current_token}]'),
                     'conflict':     False
                 })
                 self._save_result(False, state.steps, None, path_id)
                 return
 
-            # Conflicto - ramificar de nuevo
             if isinstance(action, list):
                 state.steps.append({
                     'path_id':      path_id,
                     'stack':        list(state.stack),
                     'symbol_stack': list(state.symbol_stack),
                     'input':        input_tokens[state.pos:],
-                    'action':       (f'CONFLICTO: {len(action)} caminos'),
+                    'action':       f'CONFLICTO: {len(action)} caminos',
                     'conflict':     True
                 })
 
@@ -359,11 +327,8 @@ class ShiftReduceParser:
 
                     t = threading.Thread(
                         target=self._execute_action,
-                        args=(
-                            new_state, single_action,
-                            input_tokens, token_values,
-                            new_path_id
-                        )
+                        args=(new_state, single_action,
+                              input_tokens, token_values, new_path_id)
                     )
                     threads.append(t)
                     t.start()
@@ -373,7 +338,6 @@ class ShiftReduceParser:
                 return
 
     def _save_result(self, accepted, steps, tree, path_id):
-        """Guarda el resultado de un camino de forma segura (thread-safe)."""
         with self._results_lock:
             self._results.append({
                 'accepted': accepted,
@@ -382,9 +346,12 @@ class ShiftReduceParser:
                 'path_id':  path_id
             })
 
-# FUNCIÓN DE CONSTRUCCIÓN
+
+# ─────────────────────────────────────────────
+# FUNCIONES DE CONSTRUCCION
+# ─────────────────────────────────────────────
+
 def build_slr_parser(yapar_reader, slr_table):
-    """Construye un ShiftReduceParser usando la tabla SLR."""
     return ShiftReduceParser(
         action_table = slr_table.action_table,
         goto_table   = slr_table.goto_table,
@@ -394,7 +361,6 @@ def build_slr_parser(yapar_reader, slr_table):
 
 
 def build_lalr_parser(yapar_reader, lalr_table):
-    """Construye un ShiftReduceParser usando la tabla LALR."""
     return ShiftReduceParser(
         action_table = lalr_table.action_table,
         goto_table   = lalr_table.goto_table,

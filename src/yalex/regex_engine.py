@@ -139,44 +139,63 @@ def expand_char_classes(regex):
 
 def parse_char_class(content):
     """
-    Parsea el contenido de una clase de caracteres y retorna
-    la lista de caracteres individuales.
-    
-    Ejemplos:
-        "'0'-'9'"  →  ['0', '1', '2', ..., '9']
-        "'a''z'"   →  ['a', 'z']
-        "'a'-'z''A'-'Z'"  →  ['a'..'z', 'A'..'Z']
+    Parsea el contenido de una clase de caracteres.
+    Soporta rangos 'a'-'z' y secuencias de escape \t, \n, \r.
     """
+    # Mapa de secuencias de escape
+    ESCAPES = {'t': '\t', 'n': '\n', 'r': '\r', '\\': '\\'}
+
     chars = []
     i = 0
-    
+
     while i < len(content):
         # Saltar espacios
         if content[i] == ' ':
             i += 1
             continue
-        
-        # Encontramos una comilla, eso significa que es el inicio de un carácter
-        if content[i] == "'":
-            # Extraer el carácter entre comillas
-            char1 = content[i+1]
-            i += 3  # saltar 'x'
-            
-            # Hay un rango '-' después
-            if i < len(content) and content[i:i+2] == "-'":
-                # Es un rango: 'a'-'z'
-                char2 = content[i+2]
-                i += 4  # saltar -'x'
-                
-                # Expandir el rango
-                for c in range(ord(char1), ord(char2) + 1):
-                    chars.append(chr(c))
-            else:
-                # Es un carácter simple
-                chars.append(char1)
-        else:
+
+        # Solo procesamos lo que empieza con comilla
+        if content[i] != "'":
             i += 1
-    
+            continue
+
+        # Verificar que hay algo despues de la comilla
+        if i + 1 >= len(content):
+            break
+
+        # Leer el caracter — puede ser normal 'x' o escape '\t'
+        if content[i + 1] == '\\' and i + 2 < len(content):
+            # Secuencia de escape: '\t', '\n', '\r'
+            escape_key = content[i + 2]
+            char1 = ESCAPES.get(escape_key, escape_key)
+            # Saltar '\x' y la comilla de cierre si existe
+            i += 4 if (i + 3 < len(content) and content[i + 3] == "'") else 3
+        else:
+            # Caracter normal: 'x'
+            char1 = content[i + 1]
+            i += 3  # saltar 'x'
+
+        # Ver si hay un rango '-' despues
+        if i < len(content) and content[i:i + 2] == "-'":
+            if i + 2 >= len(content):
+                chars.append(char1)
+                continue
+
+            # Leer el caracter del lado derecho del rango
+            if content[i + 2] == '\\' and i + 3 < len(content):
+                escape_key = content[i + 3]
+                char2 = ESCAPES.get(escape_key, escape_key)
+                i += 5 if (i + 4 < len(content) and content[i + 4] == "'") else 4
+            else:
+                char2 = content[i + 2]
+                i += 4
+
+            # Expandir el rango
+            for c in range(ord(char1), ord(char2) + 1):
+                chars.append(chr(c))
+        else:
+            chars.append(char1)
+
     return chars
 
 

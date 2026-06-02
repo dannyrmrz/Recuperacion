@@ -1,14 +1,15 @@
 import sys
 import os
 
-# Agregar la carpeta raíz al path para poder importar src/
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 from src.yalex.lexer import YALexReader
 
 def test_reader():
     # Usar el archivo de ejemplo que ya creamos
-    reader = YALexReader('examples/sample.yalex')
+    yalex_path = os.path.join(ROOT, 'examples', 'sample.yalex')
+    reader = YALexReader(yalex_path)
 
     print(reader)  # Ver qué leyó
 

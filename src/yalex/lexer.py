@@ -167,7 +167,7 @@ class YALexReader:
 
             # Si la acción contiene un comentario, es una regla a ignorar
             # Ejemplo: { (* ignorar espacios *) }
-            if action.startswith('(*'):
+            if action.startswith('(*') or action == '':
                 token = None   # None significa "ignorar este lexema"
             else:
                 token = action  # El token es el texto dentro de { }

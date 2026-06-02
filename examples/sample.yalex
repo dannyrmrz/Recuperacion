@@ -1,16 +1,17 @@
-let digit = ['0'-'9']
+(* Ejemplo YALex — expresiones aritmeticas *)
+
+let digit  = ['0'-'9']
 let letter = ['a'-'z''A'-'Z']
-let whitespace = [' ''\t''\n']
 
 rule tokens =
   | digit+                { INT }
   | digit+'.'digit+       { FLOAT }
   | letter(letter|digit)* { ID }
-  | '+'                   { PLUS }
-  | '-'                   { MINUS }
-  | '*'                   { TIMES }
-  | '/'                   { DIVIDE }
-  | '('                   { LPAREN }
-  | ')'                   { RPAREN }
-  | '='                   { EQUALS }
-  | whitespace            { (* ignorar *) }
+  | '+'  { PLUS }
+  | '-'  { MINUS }
+  | '*'  { TIMES }
+  | '/'  { DIVIDE }
+  | '('  { LPAREN }
+  | ')'  { RPAREN }
+  | '='  { EQUALS }
+  | ' '  { (* ignorar *) }

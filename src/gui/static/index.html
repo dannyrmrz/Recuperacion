@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YALex + YAPar IDE</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <polyline points="16 18 22 12 16 6"></polyline>
+      <polyline points="8 6 2 12 8 18"></polyline>
+    </svg>
+    YALex + YAPar IDE
+    <span class="badge">UVG 2026</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="header-hint">Diseño de Lenguajes de Programacion</span>
+</header>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div class="sidebar-section">
+      <div class="section-label">YALex — Lexico</div>
+      <div class="file-card">
+        <div class="file-card-header">
+          <span class="indicator" id="dot-yalex"></span>
+          <span class="file-name">.yalex</span>
+          <span class="file-meta" id="yalex-meta"></span>
+        </div>
+        <textarea id="yalex-input" class="mini-editor"
+          placeholder="Pega contenido .yalex o carga un archivo..."></textarea>
+        <div class="btn-row">
+          <label class="btn btn-ghost">
+            Cargar
+            <input type="file" accept=".yalex" onchange="loadFile(event,'yalex')">
+          </label>
+          <button class="btn btn-primary" onclick="parseYalex()">Parsear</button>
+          <button class="btn btn-ghost" onclick="loadExample('yalex')">Ejemplo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">YAPar — Sintactico</div>
+      <div class="file-card">
+        <div class="file-card-header">
+          <span class="indicator" id="dot-yapar"></span>
+          <span class="file-name">.yapar</span>
+          <span class="file-meta" id="yapar-meta"></span>
+        </div>
+        <textarea id="yapar-input" class="mini-editor"
+          placeholder="Pega contenido .yapar o carga un archivo..."></textarea>
+        <div class="btn-row">
+          <label class="btn btn-ghost">
+            Cargar
+            <input type="file" accept=".yapar" onchange="loadFile(event,'yapar')">
+          </label>
+          <button class="btn btn-primary" onclick="parseYapar()">Parsear</button>
+          <button class="btn btn-ghost" onclick="loadExample('yapar')">Ejemplo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" id="grammar-section" style="display:none">
+      <div class="section-label">Gramatica</div>
+      <div class="info-grid" id="grammar-grid"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Metodo de analisis</div>
+      <div class="method-row">
+        <button class="method-btn active" id="mbtn-ll1"  onclick="setMethod('ll1')">LL(1)</button>
+        <button class="method-btn"        id="mbtn-slr"  onclick="setMethod('slr')">SLR(1)</button>
+        <button class="method-btn"        id="mbtn-lalr" onclick="setMethod('lalr')">LALR</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Acciones rapidas</div>
+      <div class="quick-actions">
+        <button class="quick-btn" onclick="goTab('first-follow'); loadFF()">
+          Ver FIRST y FOLLOW
+        </button>
+        <button class="quick-btn" onclick="goTab('tables'); loadTables()">
+          Ver tablas de analisis
+        </button>
+        <button class="quick-btn" onclick="goTab('automaton'); loadAutomaton('lr0')">
+          Ver automata LR(0) — SLR
+        </button>
+        <button class="quick-btn" onclick="goTab('automaton'); loadAutomaton('lr1')">
+          Ver automata LR(1) — LALR
+        </button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- TAB BAR -->
+    <nav class="tab-bar">
+      <button class="tab active" id="tab-analyzer"     onclick="goTab('analyzer')">Analizador</button>
+      <button class="tab"        id="tab-tokens"       onclick="goTab('tokens')">
+        Tokens <span class="tab-count" id="cnt-tokens"></span>
+      </button>
+      <button class="tab"        id="tab-errors"       onclick="goTab('errors')">
+        Errores <span class="tab-count err" id="cnt-errors"></span>
+      </button>
+      <button class="tab"        id="tab-first-follow" onclick="goTab('first-follow')">FIRST / FOLLOW</button>
+      <button class="tab"        id="tab-tables"       onclick="goTab('tables')">Tablas</button>
+      <button class="tab"        id="tab-automaton"    onclick="goTab('automaton')">Automata</button>
+      <button class="tab"        id="tab-tree"         onclick="goTab('tree')">Arbol</button>
+      <button class="tab"        id="tab-parallel"     onclick="goTab('parallel')">Paralelismo</button>
+      <button class="tab"        id="tab-languages"    onclick="goTab('languages')">Lenguajes</button>
+    </nav>
+
+    <!-- PANELS -->
+    <div class="panels">
+
+      <!-- ANALIZADOR -->
+      <div class="panel active" id="panel-analyzer">
+        <div class="panel-toolbar">
+          <span class="panel-label">Codigo fuente</span>
+          <div class="toolbar-actions">
+            <button class="btn btn-ghost" onclick="clearEditor()">Limpiar</button>
+            <button class="btn btn-primary" id="analyze-btn" onclick="analyze()">▶ Analizar</button>
+          </div>
+        </div>
+        <textarea id="code-editor"
+          placeholder="Escribe o pega el codigo que quieres analizar..."></textarea>
+        <div id="result-banner" class="result-banner" style="display:none"></div>
+      </div>
+
+      <!-- TOKENS -->
+      <div class="panel" id="panel-tokens">
+        <div id="tokens-content" class="panel-content">
+          <div class="empty-state">
+            <div class="empty-icon">⬡</div>
+            <p>Analiza codigo para ver los tokens</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ERRORES -->
+      <div class="panel" id="panel-errors">
+        <div id="errors-content" class="panel-content">
+          <div class="empty-state">
+            <div class="empty-icon">✓</div>
+            <p>Sin errores — analiza codigo primero</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- FIRST / FOLLOW -->
+      <div class="panel" id="panel-first-follow">
+        <div id="ff-content" class="panel-content">
+          <div class="empty-state">
+            <div class="empty-icon">∑</div>
+            <p>Carga un .yapar y usa "Ver FIRST y FOLLOW"</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLAS -->
+      <div class="panel" id="panel-tables">
+        <div class="table-switcher">
+          <span class="panel-label">Ver tabla:</span>
+          <button class="table-tab active" id="ttab-ll1"  onclick="switchTableTab('ll1')">LL(1)</button>
+          <button class="table-tab"        id="ttab-slr"  onclick="switchTableTab('slr')">SLR(1)</button>
+          <button class="table-tab"        id="ttab-lalr" onclick="switchTableTab('lalr')">LALR</button>
+        </div>
+        <div id="tables-content" class="panel-content">
+          <div class="empty-state">
+            <div class="empty-icon">⊞</div>
+            <p>Carga un .yapar para ver las tablas</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTOMATA -->
+      <div class="panel" id="panel-automaton">
+        <div class="panel-toolbar">
+          <div class="toolbar-actions">
+            <button class="btn btn-ghost" onclick="loadAutomaton('lr0')">LR(0) — para SLR</button>
+            <button class="btn btn-ghost" onclick="loadAutomaton('lr1')">LR(1) — para LALR</button>
+          </div>
+          <span class="panel-hint" id="automaton-hint">Puedes hacer zoom y arrastrar los nodos</span>
+        </div>
+        <div id="automaton-viz" class="viz-container">
+          <div class="empty-state">
+            <div class="empty-icon">◎</div>
+            <p>Carga un .yapar para ver el automata</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ARBOL SINTACTICO -->
+      <div class="panel" id="panel-tree">
+        <div class="tree-legend">
+          <div class="legend-item">
+            <span class="legend-box nt"></span> No terminal (nodo interno)
+          </div>
+          <div class="legend-item">
+            <span class="legend-box t"></span> Terminal / token (hoja)
+          </div>
+          <span class="panel-hint">Zoom y arrastre disponibles</span>
+        </div>
+        <div id="tree-viz" class="viz-container">
+          <div class="empty-state">
+            <div class="empty-icon">⋱</div>
+            <p>El arbol aparece cuando el analisis es exitoso</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- PARALELISMO -->
+      <div class="panel" id="panel-parallel">
+        <div id="parallel-content" class="panel-content">
+          <div class="empty-state">
+            <div class="empty-icon">⑂</div>
+            <p>Los caminos paralelos apareceran aqui</p>
+            <small>Se activa cuando hay conflictos shift/reduce</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- LENGUAJES -->
+      <div class="panel" id="panel-languages">
+        <div class="lang-tabs">
+          <button class="lang-tab active" id="ltab-maya"     onclick="setLang('maya')">Maya Yucateco</button>
+          <button class="lang-tab"        id="ltab-valorant" onclick="setLang('valorant')">ValorantScript</button>
+          <button class="lang-tab"        id="ltab-cow"      onclick="setLang('cow')">COW</button>
+          <button class="lang-tab"        id="ltab-messi"    onclick="setLang('messi')">MessiScript</button>
+        </div>
+        <div class="lang-grid">
+          <div class="lang-left">
+            <p class="lang-desc" id="lang-desc"></p>
+            <div class="btn-row" style="margin-bottom:8px">
+              <button class="btn btn-ghost" onclick="loadLangExample()">Cargar ejemplo</button>
+              <button class="btn btn-primary" onclick="parseLang()">Analizar</button>
+            </div>
+            <textarea id="lang-editor" class="code-editor-sm"
+              placeholder="Escribe codigo aqui..."></textarea>
+          </div>
+          <div class="lang-right">
+            <div class="result-label">Resultado</div>
+            <div id="lang-result" class="lang-result">
+              <span class="muted">El resultado aparecera aqui...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /panels -->
+  </main>
+</div><!-- /layout -->
+
+<!-- STATUS BAR -->
+<footer class="statusbar">
+  <span id="st-yalex">yalex: sin cargar</span>
+  <span class="sep">|</span>
+  <span id="st-yapar">yapar: sin cargar</span>
+  <span class="sep">|</span>
+  <span id="st-method">metodo: ll1</span>
+  <span class="sep">|</span>
+  <span id="st-result">listo</span>
+</footer>
+
+<!-- SCRIPTS — viz primero porque app.js lo llama -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="/static/viz.js"></script>
+<script src="/static/app.js"></script>
+
+</body>
+</html> 

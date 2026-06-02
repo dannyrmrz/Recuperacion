@@ -10,10 +10,10 @@ from src.yalex.regex_engine import (
 
 def test_postfix():
     """Verifica que la conversión a postfix es correcta."""
-    # a|b  →  ab|
     result = to_postfix("a·b|c")
     print(f"Postfix de 'a·b|c': {result}")
-    assert result == "ab·c|", f"Esperaba 'ab·c|', obtuve '{result}'"
+    assert result == ['a', 'b', '·', 'c', '|'], \
+        f"Esperaba ['a', 'b', '·', 'c', '|'], obtuve '{result}'"
     print("Postfix correcto")
 
 def test_single_char():

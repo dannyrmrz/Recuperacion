@@ -91,7 +91,7 @@ class Scanner:
                 column += 1
             else:
                 # Si el token no es None (ignorar), agregarlo a la lista
-                if token.type is not None:
+                if token.type is not None and token.type != '':
                     tokens.append(token)
                 
                 # Avanzar la posición según el largo del lexema encontrado
@@ -127,8 +127,7 @@ class Scanner:
                 # Este AFD encontró un match más largo
                 best_length = length
                 best_token = Token(token_name, matched_text, line, column)
-            elif length == best_length and length > 0 and best_token is None:
-                # Mismo largo pero no teníamos nada — usar este
+            elif length == best_length and length > 0 and best_token is None and token_name != '':
                 best_token = Token(token_name, matched_text, line, column)
         
         return best_token
