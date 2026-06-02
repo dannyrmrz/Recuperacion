@@ -1,0 +1,30 @@
+/* Gramatica del lenguaje COW */
+/* Un programa valido es cualquier secuencia de las 12 instrucciones */
+/* Las instrucciones son case-sensitive: moo != MOO != MoO */
+
+%token INSTR_moo INSTR_mOo INSTR_moO INSTR_mOO
+%token INSTR_Moo INSTR_MOo INSTR_MoO INSTR_MOO
+%token INSTR_OOO INSTR_MMM INSTR_OOM INSTR_oom
+
+%%
+
+programa : lista_instrucciones
+         ;
+
+lista_instrucciones : lista_instrucciones instruccion
+                    | instruccion
+                    ;
+
+instruccion : INSTR_moo
+            | INSTR_mOo
+            | INSTR_moO
+            | INSTR_mOO
+            | INSTR_Moo
+            | INSTR_MOo
+            | INSTR_MoO
+            | INSTR_MOO
+            | INSTR_OOO
+            | INSTR_MMM
+            | INSTR_OOM
+            | INSTR_oom
+            ;

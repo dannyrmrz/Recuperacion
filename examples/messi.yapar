@@ -1,0 +1,35 @@
+/* Gramatica de MessiScript */
+/* Un programa es una secuencia de comandos entre inicio y fin */
+
+%token CMD_INICIO CMD_FIN
+%token CMD_VA CMD_DERECHA CMD_IZQUIERDA
+%token CMD_PISA CMD_JUEGA CMD_SIEMPRE CMD_GAMBETEA
+%token CMD_SIGUE CMD_VUELVE
+%token CMD_ENCARA CMD_ANKARA
+%token CMD_CORRE CMD_AMAGA
+%token CONTENIDO
+
+%%
+
+programa : CMD_INICIO cuerpo CMD_FIN
+         ;
+
+cuerpo : cuerpo comando
+       | comando
+       ;
+
+comando : CMD_VA CONTENIDO
+        | CMD_VA
+        | CMD_DERECHA
+        | CMD_IZQUIERDA
+        | CMD_PISA
+        | CMD_JUEGA
+        | CMD_SIEMPRE
+        | CMD_GAMBETEA
+        | CMD_SIGUE
+        | CMD_VUELVE
+        | CMD_ENCARA
+        | CMD_ANKARA
+        | CMD_CORRE
+        | CMD_AMAGA
+        ;
