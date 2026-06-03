@@ -783,7 +783,9 @@ async function parseLang() {
   if (d.errors && d.errors.length) {
     html += '<div style="margin-top:8px">';
     d.errors.forEach(e => {
-      html += `<div class="error-card">
+      const isSyn = e.type === 'syntactic';
+      html += `<div class="error-card${isSyn ? ' warn' : ''}">
+        <div class="etype">${isSyn ? 'Error Sintactico' : 'Error Lexico'}</div>
         <div class="emsg">${e.message || JSON.stringify(e)}</div>
       </div>`;
     });

@@ -88,6 +88,24 @@ def write_temp(content, suffix):
     return f.name
 
 
+def extract_syn_errors(paths):
+    """
+    Extrae el primer paso de error sintactico de cada camino rechazado.
+    Los errores viven en los steps como 'ERROR: no hay accion para...'
+    """
+    errors = []
+    seen = set()
+    for path in paths or []:
+        if not path.get('accepted'):
+            for step in path.get('steps', []):
+                action = step.get('action', '')
+                if action.startswith('ERROR') and action not in seen:
+                    seen.add(action)
+                    errors.append({'type': 'syntactic', 'message': action})
+                    break
+    return errors
+
+
 def filter_tokens(tokens):
     """
     Filtra tokens que no deben llegar al parser:
@@ -459,7 +477,7 @@ def parse_language():
                 'accepted':       result['accepted'],
                 'tokens':         [{'type': t.type, 'value': t.value}
                                    for t in result['tokens']],
-                'errors':         result['errors'],
+                'errors':         result['errors'] + extract_syn_errors(result['paths']),
                 'translation':    result['translation'],
                 'tree':           tree_to_dict(result['tree']),
                 'paths_count':    len(result['paths']),
@@ -476,7 +494,7 @@ def parse_language():
                 'tokens':         [{'type': t.type, 'value': t.value,
                                     'line': t.line, 'column': t.column}
                                    for t in result['tokens']],
-                'errors':         result['errors'],
+                'errors':         result['errors'] + extract_syn_errors(result['paths']),
                 'tree':           tree_to_dict(result['tree']),
                 'paths_count':    len(result['paths']),
                 'accepted_paths': sum(1 for p in result['paths'] if p['accepted']),
@@ -491,7 +509,7 @@ def parse_language():
                 'accepted':         result['accepted'],
                 'tokens':           [{'type': t.type, 'value': t.value}
                                      for t in result['tokens']],
-                'errors':           result['errors'],
+                'errors':           result['errors'] + extract_syn_errors(result['paths']),
                 'instruction_count': result['instruction_count'],
                 'paths_count':      len(result['paths']),
                 'accepted_paths':   sum(1 for p in result['paths'] if p['accepted']),
@@ -506,7 +524,7 @@ def parse_language():
                 'accepted':       result['accepted'],
                 'tokens':         [{'type': t.type, 'value': t.value}
                                    for t in result['tokens']],
-                'errors':         result['errors'],
+                'errors':         result['errors'] + extract_syn_errors(result['paths']),
                 'commands':       result['commands'],
                 'jugadas':        result['jugadas'],
                 'paths_count':    len(result['paths']),
